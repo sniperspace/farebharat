@@ -161,8 +161,12 @@ def part2_browser(results: dict):
                     try:
                         ctype = resp.headers.get("content-type", "")
                         u = resp.url
-                        interesting = (
+                        same_site_json = (
                             "json" in ctype
+                            and any(h in u for h in ("easemytrip.", "ixigo.", "edge.ixigo", "goindigo."))
+                        )
+                        interesting = (
+                            same_site_json
                             or any(k in u.lower() for k in ("api", "fare", "search", "flight", "availability"))
                         )
                         if not interesting or resp.status != 200:
@@ -176,7 +180,7 @@ def part2_browser(results: dict):
                                 walk_keys(json.loads(body), fare_hits)
                             except Exception:  # noqa: BLE001
                                 pass
-                        if not fare_hits and not FARE_TEXT_RE.search(body[:20000]):
+                        if not (fare_hits or FARE_TEXT_RE.search(body[:20000]) or same_site_json):
                             return
                         _captured.append({
                             "url": u[:300],
@@ -194,7 +198,23 @@ def part2_browser(results: dict):
                 entry = {"url": url, "final_url": "", "title": "", "block_signals": []}
                 try:
                     page.goto(url, wait_until="domcontentloaded", timeout=45000)
-                    page.wait_for_timeout(8000)
+                    page.wait_for_timeout(4000)
+                    if site == "easemytrip" and label == "search":
+                        # submit the search form in-page; site navigates to results
+                        try:
+                            page.evaluate(
+                                f"FlightSearch('{ORIGIN}','{DEST}','{travel_date('%d/%m/%Y')}')"
+                            )
+                        except Exception:
+                            try:
+                                page.click("input.srchBtnSe", timeout=5000)
+                            except Exception:  # noqa: BLE001
+                                pass
+                        page.wait_for_load_state("domcontentloaded", timeout=45000)
+                    if site == "ixigo" and label == "search":
+                        # Next.js app: fare API fires after a longer settle
+                        page.wait_for_timeout(25000)
+                    page.wait_for_timeout(6000)
                     # trigger lazy XHRs
                     for _ in range(4):
                         page.mouse.wheel(0, 900)
