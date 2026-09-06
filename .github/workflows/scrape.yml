@@ -20,10 +20,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: "pip"
@@ -39,7 +39,10 @@ jobs:
       - name: Ensure data folder exists
         run: mkdir -p data logs data/raw
 
-      - name: Run scraper (one snapshot)
+      - name: Run scraper (one snapshot, fast-fail in CI)
+        env:
+          FAREBHARAT_CI: "1"          # scheduler uses this to shorten delays + skip retries
+        timeout-minutes: 6            # hard kill if any source hangs the runner
         run: |
           python scheduler.py --once || echo "scraper had errors (continuing)"
         continue-on-error: true

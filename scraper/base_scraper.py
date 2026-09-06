@@ -1,9 +1,15 @@
 import json
 import logging
+import os
 import random
 import time
 from datetime import datetime
 from pathlib import Path
+
+# CI mode: shorter delays, fewer retries so a blocked run finishes in minutes,
+# not hours. Cloud IPs (GitHub Actions) are almost always blocked by airline
+# sites — we still try, log the failure, then fall back to demo data.
+CI_MODE = os.environ.get("FAREBHARAT_CI") == "1"
 
 logging.basicConfig(
     filename="logs/scraper.log",
@@ -27,8 +33,8 @@ class BaseScraper:
     """
 
     name = "base"
-    max_retries = 3
-    delay_range = (5, 10)  # seconds between requests (ethical rate limit)
+    max_retries = 1 if CI_MODE else 3
+    delay_range = (1, 2) if CI_MODE else (5, 10)  # ethical rate limit off-CI
 
     def run(self, route: dict, date: str) -> list:
         """Run scrape for one route+date with retries."""
@@ -49,7 +55,10 @@ class BaseScraper:
                     "%s %s-%s %s attempt %d failed: %s",
                     self.name, route["origin"], route["dest"], date, attempt, exc,
                 )
-                time.sleep(30 * attempt)  # exponential backoff
+                # Exponential backoff — skipped in CI (cloud IPs stay blocked
+                # regardless of wait time, and we have a demo-data fallback).
+                if not CI_MODE:
+                    time.sleep(30 * attempt)
         self.save_failure(route, date)
         return []
 

@@ -12,12 +12,16 @@ import re
 
 import requests
 
-from .base_scraper import BaseScraper
+from .base_scraper import CI_MODE, BaseScraper
+
+# CI runs on cloud IPs where airline endpoints usually block us;
+# a shorter timeout keeps the workflow snappy without hurting real deployments.
+_HTTP_TIMEOUT = 15 if CI_MODE else 45
 
 
 class EaseMyTripScraper(BaseScraper):
     name = "easemytrip"
-    delay_range = (6, 12)
+    delay_range = (1, 2) if CI_MODE else (6, 12)
 
     def scrape(self, route: dict, date: str) -> list:
         origin, dest = route["origin"], route["dest"]
@@ -31,7 +35,7 @@ class EaseMyTripScraper(BaseScraper):
             f"?adult=1&child=0&infant=0&journeyType=1&cabins=0"
             f"&org={origin}&dest={dest}&dept={d}&ret=&airline=Any"
         )
-        resp = requests.get(url, headers=self.random_headers(), timeout=45)
+        resp = requests.get(url, headers=self.random_headers(), timeout=_HTTP_TIMEOUT)
         if resp.status_code != 200:
             raise RuntimeError(f"HTTP {resp.status_code}")
         data = resp.json()
