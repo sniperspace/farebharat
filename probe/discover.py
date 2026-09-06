@@ -139,6 +139,23 @@ def part2_browser(results: dict):
             for label, url in attempts:
                 page = ctx.new_page()
                 captured = []
+                requests_log = []
+
+                def on_request(req, _log=requests_log):
+                    try:
+                        u = req.url.lower()
+                        if any(k in u for k in ("api", "search", "fare", "flight", "availability")):
+                            _log.append({
+                                "method": req.method,
+                                "url": req.url[:300],
+                                "post_data": (req.post_data or "")[:400] if req.method == "POST" else None,
+                                "headers": {
+                                    k: v for k, v in list(req.headers.items())[:12]
+                                    if k.lower() in ("content-type", "origin", "referer", "x-requested-with")
+                                },
+                            })
+                    except Exception:  # noqa: BLE001
+                        pass
 
                 def on_response(resp, _captured=captured):
                     try:
@@ -146,7 +163,7 @@ def part2_browser(results: dict):
                         u = resp.url
                         interesting = (
                             "json" in ctype
-                            or any(k in u.lower() for k in ("api", "fare", "search", "flight"))
+                            or any(k in u.lower() for k in ("api", "fare", "search", "flight", "availability"))
                         )
                         if not interesting or resp.status != 200:
                             return
@@ -161,7 +178,7 @@ def part2_browser(results: dict):
                                 pass
                         if not fare_hits and not FARE_TEXT_RE.search(body[:20000]):
                             return
-                        captured.append({
+                        _captured.append({
                             "url": u[:300],
                             "status": resp.status,
                             "ctype": ctype,
@@ -173,24 +190,37 @@ def part2_browser(results: dict):
                         pass
 
                 page.on("response", on_response)
+                page.on("request", on_request)
                 entry = {"url": url, "final_url": "", "title": "", "block_signals": []}
                 try:
                     page.goto(url, wait_until="domcontentloaded", timeout=45000)
-                    page.wait_for_timeout(6000)
+                    page.wait_for_timeout(8000)
                     # trigger lazy XHRs
-                    for _ in range(3):
+                    for _ in range(4):
                         page.mouse.wheel(0, 900)
                         page.wait_for_timeout(2500)
                     entry["final_url"] = page.url[:300]
                     entry["title"] = page.title()[:120]
                     low = (page.content() or "")[:30000].lower()
                     entry["block_signals"] = [
-                        w for w in ("captcha", "access denied", "blocked", "verify you are human")
+                        w for w in ("access denied", "blocked", "verify you are human")
                         if w in low
                     ]
+                    # DOM fare extraction: prove fares visible to a real browser
+                    dom_fares = page.eval_on_selector_all(
+                        "body",
+                        """el => {
+                            const t = el.innerText || '';
+                            const m = t.match(/(?:\\u20B9|INR\\s?)\\s?\\d{1,2},?\\d{3}/g) || [];
+                            return m.slice(0, 15);
+                        }""",
+                    )
+                    entry["dom_fares"] = dom_fares
+                    entry["dom_fare_count"] = len(dom_fares)
                 except Exception as exc:  # noqa: BLE001
                     entry["error"] = f"{type(exc).__name__}: {exc}"[:200]
                 entry["captured"] = captured
+                entry["requests"] = requests_log[:40]
                 shot = OUT / "screenshots" / f"{site}_{label}.png"
                 try:
                     page.screenshot(path=str(shot), full_page=False)
@@ -204,6 +234,13 @@ def part2_browser(results: dict):
                 if captured:
                     for c in captured[:5]:
                         print(f"    -> {c['url']}")
+                if requests_log:
+                    print(f"    requests tracked: {len(requests_log)}")
+                    for r in requests_log[:10]:
+                        m = r.get("post_data")
+                        print(f"    [{r['method']}] {r['url']}" + (f"  POST={m[:120]!r}" if m else ""))
+                if entry.get("dom_fare_count"):
+                    print(f"    DOM fares visible: {entry['dom_fare_count']} e.g. {entry['dom_fares'][:5]}")
             results["browser"][site] = site_res
 
         browser.close()
