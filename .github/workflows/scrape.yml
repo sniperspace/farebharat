@@ -1,0 +1,63 @@
+name: FareBharat Daily Scrape
+
+# Runs the scraper daily and commits fresh data back to the repo.
+# Streamlit Cloud auto-redeploys when the repo updates, so the
+# dashboard is always live with the latest APIx values.
+
+on:
+  schedule:
+    # 06:15 IST = 00:45 UTC. Add jitter with a small offset.
+    - cron: "45 0 * * *"
+  workflow_dispatch: {}   # allow manual run from GitHub UI
+
+# Give the job permission to push commits back to the repo
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python deps
+        run: |
+          pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: |
+          python -m playwright install --with-deps chromium
+
+      - name: Ensure data folder exists
+        run: mkdir -p data logs data/raw
+
+      - name: Run scraper (one snapshot)
+        run: |
+          python scheduler.py --once || echo "scraper had errors (continuing)"
+        continue-on-error: true
+
+      - name: Top-up with demo data if DB is empty
+        # keeps the dashboard populated even if all sources are blocked
+        run: |
+          python -c "from db import get_session, FareQuote; s=get_session(); n=s.query(FareQuote).count(); s.close(); print('quotes:', n); import sys; sys.exit(0 if n>0 else 1)" \
+          || python demo_data.py
+
+      - name: Rebuild APIx index
+        run: python build_index.py
+
+      - name: Commit updated data
+        run: |
+          git config user.name  "farebharat-bot"
+          git config user.email "farebharat-bot@users.noreply.github.com"
+          git add data/apix.db data/raw/ logs/scraper.log || true
+          git diff --cached --quiet && echo "no changes" && exit 0
+          git commit -m "auto: FareBharat APIx daily snapshot $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push

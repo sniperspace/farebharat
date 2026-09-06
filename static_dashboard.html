@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FareBharat — Airfare Price Index India</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 24px; background: #f7f8fa; }
+  h1 { color: #1a3c6e; } .kpi { display:inline-block; background:#fff; padding:16px 24px;
+       margin:8px; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.1); }
+  .kpi b { font-size: 28px; } canvas { background:#fff; margin-top:16px; border-radius:10px; }
+</style>
+</head>
+<body>
+<h1>FareBharat ✈️ — Real-time Airfare Price Index for India</h1>
+<p>APIx metric · Base = 100 · Jevons index · DGCA-weighted basket · Requires <code>uvicorn api:app</code> running.</p>
+<div class="kpi">Latest APIx <br><b id="kpi">—</b></div>
+<div class="kpi">vs Base <br><b id="kpi-delta">—</b></div>
+<canvas id="chart" width="900" height="380"></canvas>
+<script>
+const KEY = "apix-demo-key";
+fetch(`http://localhost:8000/api/v1/index?frequency=daily&scope=national&key=${KEY}`)
+  .then(r => r.json())
+  .then(d => {
+    const dates = d.series.map(p => p.date), vals = d.series.map(p => p.value);
+    if (vals.length) {
+      document.getElementById("kpi").textContent = vals[vals.length-1].toFixed(1);
+      const delta = (vals[vals.length-1] - 100).toFixed(1);
+      document.getElementById("kpi-delta").textContent = (delta > 0 ? "+" : "") + delta;
+    }
+    new Chart(document.getElementById("chart"), {
+      type: "line",
+      data: { labels: dates, datasets: [{ label: "FareBharat APIx (base=100)", data: vals, borderColor: "#1a3c6e", tension: .25 }]},
+      options: { scales: { y: { title: { display: true, text: "Index" }}}}
+    });
+  })
+  .catch(() => alert("Start the API first: uvicorn api:app --reload"));
+</script>
+</body>
+</html>

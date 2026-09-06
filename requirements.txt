@@ -1,0 +1,11 @@
+playwright>=1.45
+requests>=2.32
+PyYAML>=6.0
+schedule>=1.2
+fastapi>=0.111
+uvicorn>=0.30
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+pandas>=2.2
+streamlit>=1.36
+plotly>=5.22

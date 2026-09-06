@@ -1,0 +1,7 @@
+routes:
+  - {origin: DEL, dest: BOM, windows: [1, 7, 15, 30, 45]}
+  - {origin: DEL, dest: BLR, windows: [1, 7, 15, 30, 45]}
+  - {origin: BOM, dest: BLR, windows: [1, 7, 15, 30, 45]}
+  - {origin: DEL, dest: CCU, windows: [7, 30]}
+  - {origin: BLR, dest: HYD, windows: [7, 30]}
+  - {origin: MAA, dest: DEL, windows: [7, 30]}

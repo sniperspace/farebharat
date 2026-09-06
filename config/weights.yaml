@@ -1,0 +1,12 @@
+# Fixed basket weights from DGCA domestic passenger traffic (share %).
+# Update annually from DGCA traffic data; must sum to ~100.
+route_weights:
+  DEL-BOM: 14.5
+  DEL-BLR: 12.0
+  BOM-BLR: 10.5
+  DEL-CCU: 8.0
+  BLR-HYD: 7.5
+  MAA-DEL: 7.5
+
+# Index base period (like CPI base year)
+base_date: "2026-09-01"
