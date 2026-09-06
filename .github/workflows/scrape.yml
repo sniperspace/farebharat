@@ -1,16 +1,14 @@
-name: FareBharat Daily Scrape
+name: FareBharat Real Scrape (6-hourly)
 
-# Runs the scraper daily and commits fresh data back to the repo.
-# Streamlit Cloud auto-redeploys when the repo updates, so the
-# dashboard is always live with the latest APIx values.
+# Scrapes real fares (Ixigo stream API) every 6 hours, rebuilds APIx,
+# commits the DB back — Streamlit Cloud auto-redeploys on the new commit.
+# Demo-data top-up stays as a clearly-labelled fallback only.
 
 on:
   schedule:
-    # 06:15 IST = 00:45 UTC. Add jitter with a small offset.
-    - cron: "45 0 * * *"
-  workflow_dispatch: {}   # allow manual run from GitHub UI
+    - cron: "0 */6 * * *"   # 00:00, 06:00, 12:00, 18:00 UTC
+  workflow_dispatch: {}      # manual test button
 
-# Give the job permission to push commits back to the repo
 permissions:
   contents: write
 
@@ -32,25 +30,20 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Install Playwright browsers
-        run: |
-          python -m playwright install --with-deps chromium
-
-      - name: Ensure data folder exists
+      - name: Ensure data folders exist
         run: mkdir -p data logs data/raw
 
-      - name: Run scraper (one snapshot, fast-fail in CI)
+      - name: Run real scraper (Ixigo, all routes x windows)
         env:
-          FAREBHARAT_CI: "1"          # scheduler uses this to shorten delays + skip retries
-        timeout-minutes: 6            # hard kill if any source hangs the runner
+          FAREBHARAT_CI: "1"
+        timeout-minutes: 25
         run: |
           python scheduler.py --once || echo "scraper had errors (continuing)"
-        continue-on-error: true
 
-      - name: Top-up with demo data if DB is empty
-        # keeps the dashboard populated even if all sources are blocked
+      - name: Top-up with demo data only if DB is empty
+        # labelled fallback — real rows keep source='ixigo'
         run: |
-          python -c "from db import get_session, FareQuote; s=get_session(); n=s.query(FareQuote).count(); s.close(); print('quotes:', n); import sys; sys.exit(0 if n>0 else 1)" \
+          python -c "from db import get_session, FareQuote; s=get_session(); n=s.query(FareQuote).filter(FareQuote.source!='demo').count(); s.close(); print('real quotes:', n); import sys; sys.exit(0 if n>0 else 1)" \
           || python demo_data.py
 
       - name: Rebuild APIx index
@@ -62,5 +55,5 @@ jobs:
           git config user.email "farebharat-bot@users.noreply.github.com"
           git add data/apix.db data/raw/ logs/scraper.log || true
           git diff --cached --quiet && echo "no changes" && exit 0
-          git commit -m "auto: FareBharat APIx daily snapshot $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git commit -m "auto: APIx 6-hourly snapshot + real ixigo fares $(date -u +'%Y-%m-%d %H:%M UTC')"
           git push

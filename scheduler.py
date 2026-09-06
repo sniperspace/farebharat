@@ -16,13 +16,18 @@ from pathlib import Path
 import yaml
 
 from scraper.base_scraper import logging
-from scraper.easemytrip_scraper import EaseMyTripScraper
-from scraper.indigo_scraper import IndigoScraper
+from scraper.ixigo_scraper import IxigoScraper
 
-SCRAPERS = [
-    EaseMyTripScraper(),
-    IndigoScraper(),
-]
+import os
+
+# Ixigo is the working real source (pure-requests, see scraper/ixigo_scraper.py).
+# EMT (session-bound) and IndiGo (Akamai-blocked from cloud) stay opt-in via env.
+SCRAPERS = [IxigoScraper()]
+if os.environ.get("FAREBHARAT_SOURCES", "").lower() in ("all", "emt,indigo"):
+    from scraper.easemytrip_scraper import EaseMyTripScraper
+    from scraper.indigo_scraper import IndigoScraper
+
+    SCRAPERS += [EaseMyTripScraper(), IndigoScraper()]
 
 
 def load_routes() -> list:
@@ -37,12 +42,31 @@ def compute_dates(windows: list) -> list:
 
 
 def daily_job():
+    from cleaner import clean_quotes
+    from db import upsert_quotes
+
     routes = load_routes()
+    today = datetime.now().date()
+    total_raw = total_new = 0
     for route in routes:
         for date in compute_dates(route["windows"]):
+            travel = date if not isinstance(date, str) else datetime.fromisoformat(date).date()
+            window = (travel - today).days
             for scraper in SCRAPERS:
-                scraper.run(route, date)
-    logging.info("daily_job complete at %s", datetime.now().isoformat())
+                quotes = scraper.run(route, date)
+                if not quotes:
+                    continue
+                total_raw += len(quotes)
+                for q in quotes:
+                    q.setdefault("scraped_date", today)
+                    q.setdefault("advance_window", window)
+                    q.setdefault("travel_date", travel.isoformat())
+                cleaned = clean_quotes(quotes)
+                total_new += upsert_quotes(cleaned)
+    logging.info(
+        "daily_job complete at %s (raw=%d, inserted=%d)",
+        datetime.now().isoformat(), total_raw, total_new,
+    )
 
 
 def main():

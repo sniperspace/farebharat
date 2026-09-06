@@ -54,6 +54,9 @@ def clean_quotes(raw_quotes: list) -> list:
     df = pd.DataFrame(rows)
     if df.empty:
         return []
+    # keep the CHEAPEST quote per carrier x date (the price a consumer would pay),
+    # then de-duplicate on the index key
+    df = df.sort_values("total_fare")
     df = df.drop_duplicates(subset=["source", "origin", "dest", "travel_date", "carrier", "fare_class"])
     df = flag_outliers(df)
     return df.to_dict("records")
