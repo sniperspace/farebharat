@@ -84,8 +84,11 @@ class IxigoScraper(BaseScraper):
         resp = requests.get(
             _STREAM_URL + params, headers=headers, timeout=90, stream=True
         )
-        from .base_scraper import logging
+        from .base_scraper import logging, robots_allows
 
+        if not robots_allows(_STREAM_URL):
+            logging.warning("ixigo robots.txt disallows %s — skipping source", _STREAM_URL)
+            return []
         logging.info(
             "ixigo %s-%s %s HTTP %d, %d bytes, ctype=%s",
             origin, dest, leave, resp.status_code, len(resp.content),

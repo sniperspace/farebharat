@@ -3,6 +3,7 @@ import logging
 import os
 import random
 import time
+import urllib.robotparser
 from datetime import datetime
 from pathlib import Path
 
@@ -22,6 +23,41 @@ USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 ]
+
+# robots.txt verdicts cached per host for the process lifetime
+_ROBOTS_CACHE: dict = {}
+
+
+def robots_allows(url: str, user_agent: str = "FareBharatBot/1.0 (+statistical research; contact: nso-moit@example.gov.in)") -> bool:
+    """True if robots.txt of the host permits fetching `url` for our UA.
+
+    Fetched via requests (urllib's default UA gets 403 from CDNs, which
+    robotparser misreads as disallow-all). Cached per host; on fetch
+    failure we fail-open but log, so a transient outage doesn't kill
+    data collection.
+    """
+    import requests as _rq
+    from urllib.parse import urlparse
+
+    host = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+    if host not in _ROBOTS_CACHE:
+        rp = urllib.robotparser.RobotFileParser()
+        try:
+            r = _rq.get(f"{host}/robots.txt", timeout=30, headers={
+                "User-Agent": USER_AGENTS[0],
+            })
+            rp.parse(r.text.splitlines())
+            _ROBOTS_CACHE[host] = rp
+        except Exception as exc:  # noqa: BLE001
+            logging.warning("robots.txt unreachable for %s (%s) — failing open", host, exc)
+            _ROBOTS_CACHE[host] = None
+    rp = _ROBOTS_CACHE[host]
+    if rp is None:
+        return True
+    try:
+        return rp.can_fetch(user_agent, url)
+    except Exception:  # noqa: BLE001
+        return True
 
 
 class BaseScraper:
