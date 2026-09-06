@@ -27,7 +27,7 @@ def main():
 
     quotes = session.query(FareQuote).all()
     if not quotes:
-        print("No quotes in DB. Run: python demo_data.py")
+        print("No quotes in DB. Run: python scheduler.py --once")
         return
 
     base_level = eng.base_price_level(quotes)

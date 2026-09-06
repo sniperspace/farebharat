@@ -182,7 +182,7 @@ with tab1:
     st.subheader("National Daily APIx (base = 100)")
     df = load_index_series("daily", "national")
     if df.empty:
-        st.info("No data yet. If running locally: `python demo_data.py && python build_index.py`")
+        st.info("No data yet. Run: `python scheduler.py --once && python build_index.py`")
     else:
         fig = go.Figure()
         fig.add_trace(go.Scatter(
