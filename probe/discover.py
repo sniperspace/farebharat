@@ -149,10 +149,7 @@ def part2_browser(results: dict):
                                 "method": req.method,
                                 "url": req.url[:300],
                                 "post_data": (req.post_data or "")[:400] if req.method == "POST" else None,
-                                "headers": {
-                                    k: v for k, v in list(req.headers.items())[:12]
-                                    if k.lower() in ("content-type", "origin", "referer", "x-requested-with")
-                                },
+                                "headers": dict(list(req.headers.items())[:25]),
                             })
                     except Exception:  # noqa: BLE001
                         pass
@@ -213,7 +210,35 @@ def part2_browser(results: dict):
                         page.wait_for_load_state("domcontentloaded", timeout=45000)
                     if site == "ixigo" and label == "search":
                         # Next.js app: fare API fires after a longer settle
-                        page.wait_for_timeout(25000)
+                        page.wait_for_timeout(20000)
+                        # in-page fetch of the stream API — inherits app auth/cookies
+                        leave = travel_date("%d%m%y")
+                        stream_url = (
+                            "https://www.ixigo.com/flights/v2/search/stream"
+                            f"?origin={ORIGIN}&destination={DEST}&leave={leave}&return="
+                            "&adults=1&children=0&infants=0&class=E"
+                            "&airlineFareType=REGULAR&version=2.0&searchSrc=Search%20Form"
+                        )
+                        try:
+                            entry["inpage_fetch"] = page.evaluate(
+                                """async (u) => {
+                                    const c = new AbortController();
+                                    const t = setTimeout(() => c.abort(), 40000);
+                                    try {
+                                        const r = await fetch(u, {
+                                            headers: {'Accept': 'application/json'},
+                                            credentials: 'include',
+                                            signal: c.signal,
+                                        });
+                                        const txt = await r.text();
+                                        return {status: r.status, len: txt.length, head: txt.slice(0, 3000)};
+                                    } finally { clearTimeout(t); }
+                                }""",
+                                stream_url,
+                            )
+                        except Exception as exc:  # noqa: BLE001
+                            entry["inpage_fetch"] = {"error": str(exc)[:200]}
+                        page.wait_for_timeout(3000)
                     page.wait_for_timeout(6000)
                     # trigger lazy XHRs
                     for _ in range(4):
@@ -261,6 +286,12 @@ def part2_browser(results: dict):
                         print(f"    [{r['method']}] {r['url']}" + (f"  POST={m[:120]!r}" if m else ""))
                 if entry.get("dom_fare_count"):
                     print(f"    DOM fares visible: {entry['dom_fare_count']} e.g. {entry['dom_fares'][:5]}")
+                inf = entry.get("inpage_fetch")
+                if inf:
+                    print(f"    INPAGE FETCH: status={inf.get('status')} len={inf.get('len')} "
+                          f"err={inf.get('error')}")
+                    if inf.get("head"):
+                        print(f"    INPAGE HEAD: {inf['head'][:400]}")
             results["browser"][site] = site_res
 
         browser.close()
